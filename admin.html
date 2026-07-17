@@ -2551,8 +2551,39 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     window.signOut = signOut;
     window.sendPasswordResetEmail = sendPasswordResetEmail;
   });
+  // دالة تسجيل الدخول
+window.login = async function(email, password){
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    localStorage.isAdminLoggedIn = "true";
+    localStorage.adminEmail = email;
+    
+    // شغل الحاجات المحمية بتاعت الطلبات
+    startProtectedListeners(); 
+    
+    alert("تم تسجيل الدخول بنجاح");
+    location.reload(); // اعمل ريفريش عشان يفتح لوحة التحكم
+    
+  } catch (error) {
+    alert("خطأ في تسجيل الدخول: " + error.message);
+  }
+}
 
-}); 
+// دالة تسجيل الخروج
+window.logout = async function(){
+  await signOut(auth);
+  localStorage.isAdminLoggedIn = "false";
+  location.reload();
+}
+
+// لو اليوزر عامل تسجيل دخول قبل كده
+onAuthStateChanged(auth, (user) => {
+  if (user && localStorage.isAdminLoggedIn === "true") {
+    startProtectedListeners();
+  }
+});
+
+
 }); 
 </script>
 </body>
