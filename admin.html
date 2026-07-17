@@ -204,10 +204,11 @@ nav a{padding:8px 12px;font-size:14px}
   <div id="login" class="page on">
     <div class="box" style="max-width:400px;margin:40px auto">
       <h3 style="text-align:center;margin-bottom:20px" data-key="login_title">دخول لوحة التحكم</h3>
-      <input id="u" placeholder="اليوزر" value="admin">
-      <input id="p" type="password" placeholder="الباسورد" value="1234">
+      <input id="u" placeholder="الإيميل" type="email">
+      <input id="p" type="password" placeholder="الباسورد">
       <button class="btn" onclick="doLogin()" data-key="login_btn">دخول</button>
       <p id="err" style="color:red;display:none;text-align:center" data-key="login_err">بيانات غلط</p>
+      <p style="text-align:center;margin-top:10px"><a onclick="go('forgot')" style="color:var(--main);cursor:pointer" data-key="forgot_btn">نسيت كلمة السر؟</a></p>
     </div>
   </div>
 
@@ -224,12 +225,11 @@ nav a{padding:8px 12px;font-size:14px}
 
   <div id="forgot" class="page">
     <div class="box" style="max-width:400px;margin:40px auto">
-      <h3 data-key="reset_title">استرجاع</h3>
-      <p><span data-key="reset_code_lbl">الكود</span>: <b>JOPA-RESET</b></p>
-      <input id="rCode" placeholder="الكود">
-      <input id="rU" placeholder="يوزر جديد">
-      <input id="rP" type="password" placeholder="باسورد جديد">
-      <button class="btn" onclick="doReset()" data-key="change_btn">تغيير</button>
+      <h3 data-key="reset_title">استرجاع كلمة السر</h3>
+      <p style="color:var(--muted)">هيتبعتلك رابط لتغيير الباسورد على إيميل حساب الإدارة</p>
+      <input id="resetEmail" placeholder="الإيميل" type="email">
+      <button class="btn" onclick="doForgotPassword()" data-key="change_btn">إرسال رابط التغيير</button>
+      <p id="resetMsg" style="display:none;text-align:center"></p>
       <button class="btn gray" onclick="go('login')" data-key="back_btn">رجوع</button>
     </div>
   </div>
@@ -435,8 +435,8 @@ nav a{padding:8px 12px;font-size:14px}
       <label data-key="store_name_lbl">اسم المتجر</label><input id="stName">
       <label data-key="whatsapp_lbl">واتساب</label><input id="stWa" placeholder="2010..." inputmode="tel">
       <label data-key="site_color_lbl">لون الموقع الأساسي</label><input type="color" id="stColor" style="padding:0; height:44px; cursor:pointer">
-      <label data-key="new_user_lbl">يوزر ادمن جديد</label><input id="stU">
-      <label data-key="new_pass_lbl">باسورد ادمن جديد</label><input id="stP" type="password">
+      <label data-key="new_user_lbl">تسجيل دخول الأدمن</label>
+      <p style="color:var(--muted);font-size:14px;margin-top:0">دلوقتي بيتسجل الدخول بإيميل وباسورد حقيقيين. لتغيير الإيميل/الباسورد أو إضافة أدمن جديد، ادخل على Firebase Console ← Authentication ← Users.</p>
       <label>باسورد الإدارة (طبقة الحماية الثانية بعد تسجيل الدخول)</label><input id="stMP" type="password" placeholder="مثال: 0000">
       
       <hr>
@@ -600,7 +600,7 @@ nav a{padding:8px 12px;font-size:14px}
 </div>
 
 <script>
-let ADMIN=JSON.parse(localStorage.adm||'{"u":"admin","p":"1234","mp":"0000"}');
+let ADMIN=JSON.parse(localStorage.adm||'{"mp":"0000"}');
 if(ADMIN.mp === undefined || ADMIN.mp === null) ADMIN.mp = '0000';
 let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":""}');
 
@@ -861,22 +861,47 @@ function saveAll(){
   localStorage.set = JSON.stringify(SET);
 }
 
-function doLogin(){
-  if(u.value==ADMIN.u&&p.value==ADMIN.p){
+async function doLogin(){
+  if(!window.auth || !window.signInWithEmailAndPassword){ return toast('نظام الدخول لسه بيتحمل، حاول تاني بعد ثانية'); }
+  try {
+    await window.signInWithEmailAndPassword(window.auth, u.value.trim(), p.value);
     err.style.display='none';
     mp.value=''; mpErr.style.display='none';
     go('managerGate');
-  }else{err.style.display='block'}
+  } catch(e) {
+    console.error(e);
+    err.style.display='block';
+  }
 }
 function doManagerLogin(){
   if(mp.value == (ADMIN.mp || '')){
     document.getElementById('menu').style.display='flex';
     localStorage.isAdminLoggedIn = "true";
+    if(typeof startProtectedListeners === 'function') startProtectedListeners();
     go('store');
   }else{ mpErr.style.display='block'; }
 }
-function logout(){document.getElementById('menu').style.display='none';localStorage.isAdminLoggedIn="false";go('login')}
-function doReset(){if(rCode.value=='JOPA-RESET'&&rU.value&&rP.value){ADMIN={u:rU.value,p:rP.value,mp:ADMIN.mp||'0000'};saveAll();toast('OK');go('login')}else{alert('Error')}}
+function logout(){
+  if(window.auth && window.signOut) window.signOut(window.auth).catch(()=>{});
+  document.getElementById('menu').style.display='none';
+  localStorage.isAdminLoggedIn="false";
+  go('login');
+}
+async function doForgotPassword(){
+  let email = document.getElementById('resetEmail').value.trim();
+  let msg = document.getElementById('resetMsg');
+  if(!email) return toast('اكتب الإيميل الأول');
+  if(!window.auth || !window.sendPasswordResetEmail){ return toast('نظام الدخول لسه بيتحمل، حاول تاني بعد ثانية'); }
+  try {
+    await window.sendPasswordResetEmail(window.auth, email);
+    msg.style.display='block'; msg.style.color='green';
+    msg.innerText = 'تم إرسال رابط تغيير الباسورد على إيميلك، افتحه واتبع التعليمات.';
+  } catch(e) {
+    console.error(e);
+    msg.style.display='block'; msg.style.color='red';
+    msg.innerText = 'حصل خطأ، تأكد إن الإيميل صحيح ومسجل كحساب إدارة على Firebase.';
+  }
+}
 
 function getPrice(p, qty=1){
   let price = p.disc && p.disc < p.v? p.disc : p.v;
@@ -2281,7 +2306,7 @@ async function updateStockFromDash(id){
 }
 
 function drawS(){
-  stName.value=SET.name;stWa.value=SET.wa;stColor.value=SET.theme||'#ff6600';stU.value=ADMIN.u;stP.value=ADMIN.p;stMP.value=ADMIN.mp||'';cpOn.checked=SET.cpOn;cpCode.value=SET.cpCode;cpVal.value=SET.cpVal;
+  stName.value=SET.name;stWa.value=SET.wa;stColor.value=SET.theme||'#ff6600';stMP.value=ADMIN.mp||'';cpOn.checked=SET.cpOn;cpCode.value=SET.cpCode;cpVal.value=SET.cpVal;
   waFloat.href=`https://wa.me/${SET.wa}`;gList.innerHTML='';
   SET.gov.forEach((g,i)=>{gList.innerHTML+=`<div class="gov"><input value="${g.n}" oninput="SET.gov[${i}].n=this.value"><input type="number" value="${g.v}" oninput="SET.gov[${i}].v=+this.value"><button class="btn red" onclick="SET.gov.splice(${i},1);drawS()">X</button></div>`})
   
@@ -2331,12 +2356,11 @@ async function saveS(){
   SET.shippingPolicyOn=shippingPolicyOn.checked;
   SET.shippingPolicyText=shippingPolicyText.value;
   
-  if(stU.value&&stP.value)ADMIN={u:stU.value,p:stP.value,mp:stMP.value||ADMIN.mp||''};
-  else ADMIN.mp = stMP.value||'';
+  ADMIN.mp = stMP.value || '';
   applyTheme(SET.theme);saveAll();sName.innerText=SET.name;
   
   await setDoc(doc(db, "settings", "main"), SET); 
-  await setDoc(doc(db, "settings", "admin_auth"), {u: ADMIN.u, p: ADMIN.p, mp: ADMIN.mp||''});
+  await setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
 
   renderCategoriesDOM();
   checkStoreUpdates();
@@ -2438,42 +2462,7 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     await addDoc(collection(db, "orders"), {...order, id: Date.now(), createdAt: serverTimestamp()});
   }
 
-  onSnapshot(doc(db, "settings", "admin_auth"), (snap) => {
-    if(snap.exists()){
-      let cloudAuth = snap.data();
-      if(cloudAuth.mp === undefined || cloudAuth.mp === null) cloudAuth.mp = ADMIN.mp || '0000';
-      if(ADMIN.u !== cloudAuth.u || ADMIN.p !== cloudAuth.p || (ADMIN.mp||'') !== (cloudAuth.mp||'')) {
-        ADMIN = cloudAuth;
-        localStorage.adm = JSON.stringify(ADMIN);
-        if(localStorage.isAdminLoggedIn === "true") {
-          localStorage.isAdminLoggedIn = "false";
-          alert('تم تحديث بيانات الدخول من جهاز آخر، يرجى إعادة تسجيل الدخول');
-          logout();
-        }
-      }
-      if(snap.data().mp === undefined){
-        setDoc(doc(db, "settings", "admin_auth"), {u: ADMIN.u, p: ADMIN.p, mp: ADMIN.mp||'0000'});
-      }
-    } else {
-      setDoc(doc(db, "settings", "admin_auth"), {u: ADMIN.u, p: ADMIN.p, mp: ADMIN.mp||''});
-    }
-  });
-
-  onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snapshot) => {
-    ORD = [];
-    snapshot.forEach((doc) => { 
-      if(!ORD.some(o => o.id === doc.id)) {
-        let d = doc.data();
-        let isNumeric = v => v !== undefined && v !== null && /^\d+$/.test(String(v));
-        let stableNum = isNumeric(d.id) ? d.id : ((d.createdAt && d.createdAt.seconds) ? d.createdAt.seconds : doc.id);
-        ORD.push({...d, orderNum: stableNum, id: doc.id}); 
-      }
-    });
-    if(document.getElementById('orders').classList.contains('on')) drawO(); 
-    if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
-    updateNewOrderBadge();
-  });
-
+  // Products, main settings and stats are public-read — load immediately regardless of login state.
   async function loadProducts(){
     let snapshot = await getDocs(collection(db, "products"));
     PROD = [];
@@ -2488,10 +2477,6 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
   window.loadProducts = loadProducts;
   loadProducts();
   setInterval(loadProducts, 300000);
-
-  loadSuppliers();
-  setInterval(loadSuppliers, 300000);
-  setInterval(checkSupplierSyncReminders, 600000);
 
   getDoc(doc(db, "settings", "main")).then(snap => { 
     if(snap.exists()){ 
@@ -2510,10 +2495,61 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     }
   });
 
-  // متابعة عدد زيارات المتجر لعرضها في لوحة الإحصائيات
   onSnapshot(doc(db, "settings", "stats"), (snap) => {
     STORE_VISITS = snap.exists() ? (snap.data().visits || 0) : 0;
     if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
+  });
+
+  // Orders, suppliers and the manager-password doc are only readable once logged in
+  // (see Firestore security rules) — so these listeners only start after a real login.
+  let protectedListenersStarted = false;
+  window.startProtectedListeners = function(){
+    if(protectedListenersStarted) return;
+    protectedListenersStarted = true;
+
+    onSnapshot(doc(db, "settings", "admin_auth"), (snap) => {
+      if(snap.exists()){
+        let cloudAuth = snap.data();
+        if(cloudAuth.mp === undefined || cloudAuth.mp === null) cloudAuth.mp = ADMIN.mp || '0000';
+        if((ADMIN.mp||'') !== (cloudAuth.mp||'')) {
+          ADMIN = cloudAuth;
+          localStorage.adm = JSON.stringify(ADMIN);
+          if(localStorage.isAdminLoggedIn === "true") {
+            localStorage.isAdminLoggedIn = "false";
+            alert('تم تحديث باسورد الإدارة من جهاز آخر، يرجى إعادة تسجيل الدخول');
+            logout();
+          }
+        }
+      } else {
+        setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
+      }
+    });
+
+    onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snapshot) => {
+      ORD = [];
+      snapshot.forEach((doc) => { 
+        if(!ORD.some(o => o.id === doc.id)) {
+          let d = doc.data();
+          let isNumeric = v => v !== undefined && v !== null && /^\d+$/.test(String(v));
+          let stableNum = isNumeric(d.id) ? d.id : ((d.createdAt && d.createdAt.seconds) ? d.createdAt.seconds : doc.id);
+          ORD.push({...d, orderNum: stableNum, id: doc.id}); 
+        }
+      });
+      if(document.getElementById('orders').classList.contains('on')) drawO(); 
+      if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
+      updateNewOrderBadge();
+    });
+
+    loadSuppliers();
+    setInterval(loadSuppliers, 300000);
+    setInterval(checkSupplierSyncReminders, 600000);
+  };
+
+  import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js").then(({ getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }) => {
+    window.auth = getAuth(app);
+    window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+    window.signOut = signOut;
+    window.sendPasswordResetEmail = sendPasswordResetEmail;
   });
 
 }); 
