@@ -4,7 +4,7 @@
 // between the separate pages of the site.
 // ============================================================
 
-let SET={"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":""};
+let SET={"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false};
 let PROD=[];
 let currentFilter = 'all';
 let CART = JSON.parse(localStorage.getItem('cart') || '{}');
@@ -77,6 +77,14 @@ function getPrice(p, qty=1){
 // ---------------- Cart (persisted across pages via localStorage) ----------------
 function saveCart(){ localStorage.setItem('cart', JSON.stringify(CART)); }
 
+function cleanCart(){
+  let changed = false;
+  Object.keys(CART).forEach(id => {
+    if(!PROD.find(p => p.id == id)){ delete CART[id]; changed = true; }
+  });
+  if(changed) saveCart();
+}
+
 function updateCartBadge(){
   let total = Object.values(CART).reduce((a,b)=>a+b,0);
   document.querySelectorAll('.cart-badge').forEach(el => el.innerText = total);
@@ -111,15 +119,17 @@ function cartToggle(){
 
 function addC(id){
   let p=PROD.find(x=>x.id==id);
-  if(!p)return toast('المنتج مش موجود');
-  if(p.stock<=0)return toast('خلص');
+  if(!p){ toast('المنتج مش موجود'); return false; }
+  if(p.stock<=0){ toast('خلص'); return false; }
   let max = p.maxQty || 999;
-  if((CART[id]||0) >= max) return toast(`اقصى عدد من ${p.n} هو ${max} قطعة`);
+  if((CART[id]||0) >= max){ toast(`اقصى عدد من ${p.n} هو ${max} قطعة`); return false; }
   CART[id]=(CART[id]||0)+1;
-  saveCart(); updateCartBadge(); renderCartDrawer();
+  saveCart();
+  if(SET.skipCart){ window.location.href='checkout.html'; return true; }
+  updateCartBadge(); renderCartDrawer();
   if(typeof onCartChange === 'function') onCartChange();
-  if(SET.skipCart){ window.location.href='checkout.html'; return; }
   toast('تمت الاضافة');
+  return true;
 }
 
 function delC(id){
@@ -417,11 +427,13 @@ function initApp(){
       let snapshot = await getDocs(collection(db, "products"));
       PROD = [];
       snapshot.forEach((d) => { PROD.push({id: d.id,...d.data()}); });
+      cleanCart();
+      updateCartBadge();
       checkNewProducts();
       if(typeof window.onProductsLoaded === 'function') window.onProductsLoaded();
     }
     window.loadProducts = loadProducts;
     loadProducts();
-    setInterval(loadProducts, 300000);
+    // مفيش polling — بيتحدث مرة واحدة عند دخول الصفحة بس
   })});
 }

@@ -110,6 +110,12 @@ function getProductIdFromUrl(){
   return params.get('id');
 }
 
+function buyNow(id){
+  if(addC(id)){
+    window.location.href = 'checkout.html';
+  }
+}
+
 function renderProductPage(){
   let id = getProductIdFromUrl();
   let p = PROD.find(x => x.id == id);
@@ -133,7 +139,7 @@ function renderProductPage(){
     : `<img src="${firstMedia.src}" style="width:100%; height:100%; object-fit:contain;">`;
 
   let buyBtn = document.getElementById('landingBuyBtn');
-  buyBtn.setAttribute('onclick', `addC('${p.id}');`);
+  buyBtn.setAttribute('onclick', `buyNow('${p.id}');`);
 
   let timerWrap = document.getElementById('lpTimerWrapper');
   if(SET.countDownOn) {

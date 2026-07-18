@@ -527,6 +527,13 @@ nav a{padding:8px 12px;font-size:14px}
 </div>
 <label>نص سياسة الشحن (يظهر للعميل عند الضغط على الزر في صفحة الدفع)</label>
 <textarea id="shippingPolicyText" placeholder="مثال: مدة التوصيل من 2 إلى 5 أيام عمل - يمكن استرجاع المنتج خلال 14 يوم..." rows="5"></textarea>
+
+<hr>
+<h4>8. رقم هاتف إضافي</h4>
+<div class="switch">
+  <input type="checkbox" id="altPhoneOn">
+  <label for="altPhoneOn"><b>تفعيل خانة "رقم هاتف تاني" في صفحة إتمام الطلب</b></label>
+</div>
       <button class="btn green" onclick="saveS()" data-key="save_changes">حفظ التغييرات</button>
     </div>
   </div>
@@ -539,6 +546,7 @@ nav a{padding:8px 12px;font-size:14px}
       <h3 data-key="shipping_info">بيانات الشحن</h3>
       <input id="cn" placeholder="الاسم">
       <input id="cp" placeholder="الموبايل" inputmode="tel">
+      <input id="cp2" placeholder="رقم هاتف تاني (اختياري)" inputmode="tel" style="display:none">
       <select id="cg"></select>
       <textarea id="ca" placeholder="العنوان" rows="2"></textarea>
       <div id="cpBox" class="coupon-box" style="display:none">
@@ -602,7 +610,7 @@ nav a{padding:8px 12px;font-size:14px}
 <script>
 let ADMIN=JSON.parse(localStorage.adm||'{"mp":"0000"}');
 if(ADMIN.mp === undefined || ADMIN.mp === null) ADMIN.mp = '0000';
-let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":""}');
+let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false}');
 
 let PROD=[];
 let ORD=[];
@@ -1316,6 +1324,7 @@ function toCheckout(){
   cg.onchange=calc; COUPON=0;coupon.value='';cpBox.style.display=SET.cpOn?'flex':'none';calc();
 
   document.getElementById('shipPolicyBtn').style.display = (SET.shippingPolicyOn && SET.shippingPolicyText) ? 'block' : 'none';
+  document.getElementById('cp2').style.display = SET.altPhoneOn ? 'block' : 'none';
 
   VF_SCREENSHOT = null;
   let vfBox = document.getElementById('vodafoneBox');
@@ -1441,7 +1450,7 @@ async function finish(){
     ship: LAST.ship,
     tot:LAST.tot,
     st:'new',
-    c:{n:cn.value,p:cp.value,a:ca.value,g:cg.options[cg.selectedIndex].text}
+    c:{n:cn.value,p:cp.value,p2:(SET.altPhoneOn?document.getElementById('cp2').value:''),a:ca.value,g:cg.options[cg.selectedIndex].text}
   };
   if(SET.vodafoneOn && VF_SCREENSHOT){ newOrder.paymentMethod='vodafone'; newOrder.paymentScreenshot=VF_SCREENSHOT; }
 
@@ -1773,16 +1782,18 @@ let MARKET_PRODUCTS = [];
 let ACTIVE_SUPPLIER_ID = null;
 
 async function loadSuppliers(){
+  if(!db){ toast('سجّل الدخول الأول عشان تشوف الموردين'); return; }
   try{
     let snapshot = await getDocs(collection(db, "suppliers"));
     SUPPLIERS = [];
     snapshot.forEach((d) => { SUPPLIERS.push({id: d.id, ...d.data()}); });
     if(document.getElementById('suppliers').classList.contains('on')) drawSuppliers();
     checkSupplierSyncReminders();
-  }catch(e){ console.error(e); }
+  }catch(e){ console.error(e); toast('خطأ في تحميل الموردين — تأكد إنك مسجل دخول'); }
 }
 
 async function addSupplier(){
+  if(!db) return toast('سجّل الدخول الأول');
   let name = document.getElementById('supName').value.trim();
   let apiKey = document.getElementById('supApiKey').value.trim();
   if(!name) return toast('من فضلك اكتب اسم المنصة');
@@ -1792,7 +1803,7 @@ async function addSupplier(){
     document.getElementById('supApiKey').value = '';
     await loadSuppliers();
     toast('تم إضافة المورد بنجاح');
-  }catch(e){ console.error(e); alert('حدث خطأ أثناء إضافة المورد'); }
+  }catch(e){ console.error(e); alert('حدث خطأ أثناء إضافة المورد: ' + e.message); }
 }
 
 async function deleteSupplier(id){
@@ -2065,7 +2076,7 @@ function drawO(){
         </span>
       </div>
       <p style="margin:6px 0;color:var(--muted)"><b>${o.date || ''}</b></p>
-      <p><b>${o.c ? o.c.n : ''}</b> - ${o.c ? o.c.p : ''}</p>
+      <p><b>${o.c ? o.c.n : ''}</b> - ${o.c ? o.c.p : ''}${o.c && o.c.p2 ? ` / ${o.c.p2}` : ''}</p>
       <p>${o.c ? o.c.g : ''} - ${o.c ? o.c.a : ''}</p>
       <div style="border-top:1px dashed #ddd;padding-top:8px">${itemsHtml}</div>
       ${paymentHtml}
@@ -2131,7 +2142,7 @@ function printInvoice(id){
   if(!o) return alert('الطلب مش موجود');
 
   let cName = o.c ? o.c.n : '-';
-  let cPhone = o.c ? o.c.p : '-';
+  let cPhone = o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : '-';
   let cGov = o.c ? o.c.g : '-';
   let cAddr = o.c ? o.c.a : '-';
   let shipping = Number(o.ship || 0);
@@ -2329,6 +2340,7 @@ function drawS(){
 
   shippingPolicyOn.checked=SET.shippingPolicyOn||false;
   shippingPolicyText.value=SET.shippingPolicyText||'';
+  altPhoneOn.checked=SET.altPhoneOn||false;
 
   drawCategorySettingsList();
 }
@@ -2355,6 +2367,7 @@ async function saveS(){
 
   SET.shippingPolicyOn=shippingPolicyOn.checked;
   SET.shippingPolicyText=shippingPolicyText.value;
+  SET.altPhoneOn=altPhoneOn.checked;
   
   ADMIN.mp = stMP.value || '';
   applyTheme(SET.theme);saveAll();sName.innerText=SET.name;
@@ -2388,7 +2401,7 @@ function printAllOrders(){
       <td>${(o.orderNum || o.id).toString().slice(-6)}</td>
       <td>${o.date || ''}</td>
       <td>${o.c ? o.c.n : ''}</td>
-      <td>${o.c ? o.c.p : ''}</td>
+      <td>${o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : ''}</td>
       <td>${o.items ? o.items.length : 0}</td>
       <td>${bulk.toFixed(1)}</td>
       <td>${sub.toFixed(1)}</td>
@@ -2462,12 +2475,11 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     await addDoc(collection(db, "orders"), {...order, id: Date.now(), createdAt: serverTimestamp()});
   }
 
-  // Products, main settings and stats are public-read — load immediately regardless of login state.
+  // ---- بيانات المتجر: تتحمّل مرة واحدة بس عند الدخول ----
   async function loadProducts(){
     let snapshot = await getDocs(collection(db, "products"));
     PROD = [];
-    snapshot.forEach((doc) => { PROD.push({id: doc.id, ...doc.data()}); });
-
+    snapshot.forEach((d) => { PROD.push({id: d.id, ...d.data()}); });
     if(document.getElementById('store').classList.contains('on')) drawStore(); 
     if(document.getElementById('products').classList.contains('on')) drawP(); 
     if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
@@ -2475,10 +2487,9 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     checkNewProducts();
   }
   window.loadProducts = loadProducts;
-  loadProducts();
-  setInterval(loadProducts, 300000);
 
-  getDoc(doc(db, "settings", "main")).then(snap => { 
+  async function loadSettings(){
+    let snap = await getDoc(doc(db, "settings", "main"));
     if(snap.exists()){ 
       SET = snap.data(); 
       applyTheme(SET.theme); 
@@ -2486,70 +2497,98 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
       waFloat.href = `https://wa.me/${SET.wa}`; 
       renderCategoriesDOM();
       checkStoreUpdates();
-
       if(!pixelsInitialized){
         pixelsInitialized = true;
         if(SET.fbPixelId && typeof fbq !== 'undefined'){ fbq('init', SET.fbPixelId); fbq('track', 'PageView'); }
         if(SET.tiktokPixelId && typeof TMTK !== 'undefined' && TMTK.load){ TMTK.load(SET.tiktokPixelId); TMTK.push(['track', 'PageView']); }
       }
     }
-  });
+  }
 
-  onSnapshot(doc(db, "settings", "stats"), (snap) => {
+  async function loadStats(){
+    let snap = await getDoc(doc(db, "settings", "stats"));
     STORE_VISITS = snap.exists() ? (snap.data().visits || 0) : 0;
     if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
-  });
+  }
 
-  // Orders, suppliers and the manager-password doc are only readable once logged in
-  // (see Firestore security rules) — so these listeners only start after a real login.
+  async function loadOrders(){
+    let snapshot = await getDocs(query(collection(db, "orders"), orderBy("createdAt", "desc")));
+    ORD = [];
+    snapshot.forEach((d) => { 
+      let data = d.data();
+      let isNumeric = v => v !== undefined && v !== null && /^\d+$/.test(String(v));
+      let stableNum = isNumeric(data.id) ? data.id : ((data.createdAt && data.createdAt.seconds) ? data.createdAt.seconds : d.id);
+      ORD.push({...data, orderNum: stableNum, id: d.id}); 
+    });
+    if(document.getElementById('orders').classList.contains('on')) drawO(); 
+    if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
+    updateNewOrderBadge();
+  }
+  window.loadOrders = loadOrders;
+
+  // ---- الطلبات الجديدة: onSnapshot للأدمن فقط بعد تسجيل الدخول ----
   let protectedListenersStarted = false;
   window.startProtectedListeners = function(){
     if(protectedListenersStarted) return;
     protectedListenersStarted = true;
 
-    onSnapshot(doc(db, "settings", "admin_auth"), (snap) => {
-      if(snap.exists()){
-        let cloudAuth = snap.data();
-        if(cloudAuth.mp === undefined || cloudAuth.mp === null) cloudAuth.mp = ADMIN.mp || '0000';
-        if((ADMIN.mp||'') !== (cloudAuth.mp||'')) {
-          ADMIN = cloudAuth;
-          localStorage.adm = JSON.stringify(ADMIN);
-          if(localStorage.isAdminLoggedIn === "true") {
-            localStorage.isAdminLoggedIn = "false";
-            alert('تم تحديث باسورد الإدارة من جهاز آخر، يرجى إعادة تسجيل الدخول');
-            logout();
-          }
-        }
-      } else {
-        setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
-      }
-    });
+    // حمّل كل البيانات لأول مرة
+    loadProducts();
+    loadSettings();
+    loadStats();
 
+    // الطلبات: onSnapshot حقيقي بس للأدمن عشان الإشعار الفوري
     onSnapshot(query(collection(db, "orders"), orderBy("createdAt", "desc")), (snapshot) => {
       ORD = [];
-      snapshot.forEach((doc) => { 
-        if(!ORD.some(o => o.id === doc.id)) {
-          let d = doc.data();
-          let isNumeric = v => v !== undefined && v !== null && /^\d+$/.test(String(v));
-          let stableNum = isNumeric(d.id) ? d.id : ((d.createdAt && d.createdAt.seconds) ? d.createdAt.seconds : doc.id);
-          ORD.push({...d, orderNum: stableNum, id: doc.id}); 
-        }
+      snapshot.forEach((d) => { 
+        let data = d.data();
+        let isNumeric = v => v !== undefined && v !== null && /^\d+$/.test(String(v));
+        let stableNum = isNumeric(data.id) ? data.id : ((data.createdAt && data.createdAt.seconds) ? data.createdAt.seconds : d.id);
+        ORD.push({...data, orderNum: stableNum, id: d.id}); 
       });
       if(document.getElementById('orders').classList.contains('on')) drawO(); 
       if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
       updateNewOrderBadge();
     });
 
+    // باسورد الإدارة
+    getDoc(doc(db, "settings", "admin_auth")).then(snap => {
+      if(snap.exists()){
+        let cloudAuth = snap.data();
+        if(cloudAuth.mp !== undefined && (ADMIN.mp||'') !== (cloudAuth.mp||'')) {
+          ADMIN.mp = cloudAuth.mp;
+          localStorage.adm = JSON.stringify(ADMIN);
+        }
+      } else {
+        setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
+      }
+    });
+
     loadSuppliers();
-    setInterval(loadSuppliers, 300000);
-    setInterval(checkSupplierSyncReminders, 600000);
   };
 
+  // ---- بدون تسجيل دخول: حمّل الإعدادات والمنتجات بس (للمتجر المدمج) ----
+  loadSettings();
+  loadProducts();
+
+  // ---- Firebase Auth ----
   import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js").then(({ getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }) => {
     window.auth = getAuth(app);
     window.signInWithEmailAndPassword = signInWithEmailAndPassword;
     window.signOut = signOut;
     window.sendPasswordResetEmail = sendPasswordResetEmail;
+
+    // لو الأدمن كان مسجل دخول (session محفوظة) وفضل على نفس المتصفح
+    onAuthStateChanged(window.auth, (user) => {
+      if(user && localStorage.isAdminLoggedIn === "true"){
+        document.getElementById('menu').style.display = 'flex';
+        window.startProtectedListeners();
+        // لو على صفحة اللوجين، انقله للمتجر
+        if(document.getElementById('login').classList.contains('on')){
+          go('store');
+        }
+      }
+    });
   });
 
 }); 

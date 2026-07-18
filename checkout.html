@@ -77,6 +77,7 @@
     <h3 data-key="shipping_info">بيانات الشحن</h3>
     <input id="cn" placeholder="الاسم">
     <input id="cp" placeholder="الموبايل" inputmode="tel">
+    <input id="cp2" placeholder="رقم هاتف تاني (اختياري)" inputmode="tel" style="display:none">
     <select id="cg"></select>
     <textarea id="ca" placeholder="العنوان" rows="2"></textarea>
     <div id="cpBox" class="coupon-box" style="display:none">
@@ -186,7 +187,7 @@ async function finish(){
     await window.setDoc(window.doc(db, "products", id), p);
   }
 
-  let newOrder = { id:Date.now(),date:new Date().toLocaleString('ar-EG'),items,subtotal: LAST.sub,bulkDiscount: LAST.bulkSave || 0,coupon: LAST.sub * (COUPON / 100),ship: LAST.ship,tot:LAST.tot,st:'new',c:{n:cn.value,p:cp.value,a:ca.value,g:cg.options[cg.selectedIndex].text}};
+  let newOrder = { id:Date.now(),date:new Date().toLocaleString('ar-EG'),items,subtotal: LAST.sub,bulkDiscount: LAST.bulkSave || 0,coupon: LAST.sub * (COUPON / 100),ship: LAST.ship,tot:LAST.tot,st:'new',c:{n:cn.value,p:cp.value,p2:(SET.altPhoneOn?document.getElementById('cp2').value:''),a:ca.value,g:cg.options[cg.selectedIndex].text}};
   if(SET.vodafoneOn && VF_SCREENSHOT){ newOrder.paymentMethod='vodafone'; newOrder.paymentScreenshot=VF_SCREENSHOT; }
   if(typeof fbq !== 'undefined' && SET.fbPixelId) { fbq('track', 'Purchase', { value: LAST.tot, currency: 'EGP' }); }
   if(typeof TMTK !== 'undefined' && SET.tiktokPixelId) { TMTK.push(['track', 'CompletePayment', { value: LAST.tot, currency: 'EGP' }]); }
@@ -277,6 +278,7 @@ function renderCheckout(){
   COUPON=0; document.getElementById('coupon').value=''; document.getElementById('cpBox').style.display=SET.cpOn?'flex':'none'; calc();
 
   document.getElementById('shipPolicyBtn').style.display = (SET.shippingPolicyOn && SET.shippingPolicyText) ? 'block' : 'none';
+  document.getElementById('cp2').style.display = SET.altPhoneOn ? 'block' : 'none';
 
   VF_SCREENSHOT = null;
   let vfBox = document.getElementById('vodafoneBox');
