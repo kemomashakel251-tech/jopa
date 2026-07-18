@@ -870,7 +870,15 @@ function saveAll(){
 }
 
 async function doLogin(){
-  if(!window.auth || !window.signInWithEmailAndPassword){ return toast('نظام الدخول لسه بيتحمل، حاول تاني بعد ثانية'); }
+  // لو Auth لسه بيتحمل، استنى لحد 5 ثواني
+  let waited = 0;
+  while((!window.auth || !window.signInWithEmailAndPassword) && waited < 50){
+    await new Promise(r => setTimeout(r, 100));
+    waited++;
+  }
+  if(!window.auth || !window.signInWithEmailAndPassword){
+    return toast('نظام الدخول لسه بيتحمل، تأكد من اتصال الإنترنت وحاول تاني');
+  }
   try {
     await window.signInWithEmailAndPassword(window.auth, u.value.trim(), p.value);
     err.style.display='none';
@@ -879,6 +887,10 @@ async function doLogin(){
   } catch(e) {
     console.error(e);
     err.style.display='block';
+    // وضّح السبب لو إنترنت أو إيميل غلط
+    if(e.code === 'auth/network-request-failed') toast('تحقق من اتصال الإنترنت');
+    else if(e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') toast('الإيميل أو الباسورد غلط');
+    else toast('خطأ: ' + (e.message || e.code));
   }
 }
 function doManagerLogin(){
@@ -2469,6 +2481,22 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
     appId: "1:481955111504:web:6920b1440453fb2da0e755"
   });
 
+  // حمّل Auth بشكل مستقل ومتوازٍ مع Firestore من أول ما الـ app يتعمل
+  import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js").then(({ getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }) => {
+    window.auth = getAuth(app);
+    window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+    window.signOut = signOut;
+    window.sendPasswordResetEmail = sendPasswordResetEmail;
+
+    onAuthStateChanged(window.auth, (user) => {
+      if(user && localStorage.isAdminLoggedIn === "true"){
+        document.getElementById('menu').style.display = 'flex';
+        if(typeof window.startProtectedListeners === 'function') window.startProtectedListeners();
+        if(document.getElementById('login').classList.contains('on')) go('store');
+      }
+    });
+  });
+
   db = firestore.getFirestore(app);
 
   window.saveOrderToCloud = async function(order){
@@ -2572,7 +2600,7 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
   loadProducts();
 
   // ---- Firebase Auth ----
-  import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js").then(({ getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }) => {
+import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js").then(({ getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }) => {
     window.auth = getAuth(app);
     window.signInWithEmailAndPassword = signInWithEmailAndPassword;
     window.signOut = signOut;
