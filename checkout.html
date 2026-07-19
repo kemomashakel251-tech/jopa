@@ -181,23 +181,38 @@ async function finish(){
     if(p.customVariants && p.customVariants.length && customSum!= CART[id]) return toast(`مجموع ${p.customVariants[0].name} لازم يساوي ${CART[id]} للمنتج ${p.n}`);
     if(CART[id]>p.stock)return toast(`${i18n[LANG].max_stock} ${p.stock}`);
     items.push({id:id,n:p.n,d:p.d||'',v:price,q:CART[id],cost:p.cost||0,sizes:opt.sizes,colors:opt.colors,custom:opt.custom||{}});
-
-    p.stock-=CART[id];
-    for(let c in opt.colors){ if(p.stockByColor && p.stockByColor[c]) p.stockByColor[c] -= opt.colors[c]; }
-    for(let s in opt.sizes){ if(p.stockBySize && p.stockBySize[s]) p.stockBySize[s] -= opt.sizes[s]; }
-    if(p.customVariants){ for(let cv of p.customVariants){ if(opt.custom && opt.custom[cv.name]) cv.stock -= opt.custom[cv.name]; } }
-    await window.setDoc(window.doc(db, "products", id), p);
   }
 
-  let newOrder = { id:Date.now(),date:new Date().toLocaleString('ar-EG'),items,subtotal: LAST.sub,bulkDiscount: LAST.bulkSave || 0,coupon: LAST.sub * (COUPON / 100),ship: LAST.ship,tot:LAST.tot,st:'new',c:{n:cn.value,p:cp.value,p2:(SET.altPhoneOn?document.getElementById('cp2').value:''),a:ca.value,g:cg.options[cg.selectedIndex].text}};
-  if(SET.vodafoneOn && VF_SCREENSHOT){ newOrder.paymentMethod='vodafone'; newOrder.paymentScreenshot=VF_SCREENSHOT; }
-  if(typeof fbq !== 'undefined' && SET.fbPixelId) { fbq('track', 'Purchase', { value: LAST.tot, currency: 'EGP' }); }
-  if(typeof TMTK !== 'undefined' && SET.tiktokPixelId) { TMTK.push(['track', 'CompletePayment', { value: LAST.tot, currency: 'EGP' }]); }
+  let confirmBtn = document.querySelector('button[onclick="finish()"]');
+  if(confirmBtn){ confirmBtn.disabled = true; confirmBtn.innerText = 'جاري إرسال الطلب...'; }
 
-  await window.saveOrderToCloud(newOrder);
-  CART={};CHK_OPTS={};COUPON=0;VF_SCREENSHOT=null;saveCart();
-  toast('تم الطلب بنجاح ');
-  window.location.href = 'index.html';
+  try {
+    for(let id in CART){
+      let p=PROD.find(x=>x.id==id); let opt=CHK_OPTS[id];
+      p.stock-=CART[id];
+      for(let c in opt.colors){ if(p.stockByColor && p.stockByColor[c]) p.stockByColor[c] -= opt.colors[c]; }
+      for(let s in opt.sizes){ if(p.stockBySize && p.stockBySize[s]) p.stockBySize[s] -= opt.sizes[s]; }
+      if(p.customVariants){ for(let cv of p.customVariants){ if(opt.custom && opt.custom[cv.name]) cv.stock -= opt.custom[cv.name]; } }
+      await window.setDoc(window.doc(db, "products", id), p);
+    }
+
+    let newOrder = { id:Date.now(),date:new Date().toLocaleString('ar-EG'),items,subtotal: LAST.sub,bulkDiscount: LAST.bulkSave || 0,coupon: LAST.sub * (COUPON / 100),ship: LAST.ship,tot:LAST.tot,st:'new',c:{n:cn.value,p:cp.value,p2:(SET.altPhoneOn?document.getElementById('cp2').value:''),a:ca.value,g:cg.options[cg.selectedIndex].text}};
+    if(SET.vodafoneOn && VF_SCREENSHOT){ newOrder.paymentMethod='vodafone'; newOrder.paymentScreenshot=VF_SCREENSHOT; }
+    if(typeof fbq !== 'undefined' && SET.fbPixelId) { fbq('track', 'Purchase', { value: LAST.tot, currency: 'EGP' }); }
+    if(typeof TMTK !== 'undefined' && SET.tiktokPixelId) { TMTK.push(['track', 'CompletePayment', { value: LAST.tot, currency: 'EGP' }]); }
+
+    await window.saveOrderToCloud(newOrder);
+    CART={};CHK_OPTS={};COUPON=0;VF_SCREENSHOT=null;saveCart();
+    toast('تم الطلب بنجاح ');
+    window.location.href = 'index.html';
+  } catch(err) {
+    console.error('فشل إرسال الطلب:', err);
+    let msg = (err && err.code === 'permission-denied')
+      ? 'في مشكلة في صلاحيات الحفظ، من فضلك تواصل مع صاحب المتجر'
+      : 'حصل خطأ وإحنا بنحفظ طلبك، حاول تاني أو تواصل معانا على الواتساب';
+    toast(msg);
+    if(confirmBtn){ confirmBtn.disabled = false; confirmBtn.innerText = i18n[LANG].confirm_order; }
+  }
 }
 
 function renderCheckout(){
