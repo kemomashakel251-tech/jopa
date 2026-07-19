@@ -416,6 +416,28 @@ function initApp(){
       }
     });
 
+    // حمّل الإعدادات المتقدمة (كود الهيد) وحقنه في الصفحة
+    window.getDoc(window.doc(db, "settings", "advanced")).then(snap => {
+      if(snap && snap.exists && snap.exists()){
+        let adv = snap.data();
+        if(adv.headerCode && adv.headerCode.trim()){
+          let temp = document.createElement('div');
+          temp.innerHTML = adv.headerCode;
+          Array.from(temp.childNodes).forEach(node => {
+            if(node.tagName === 'SCRIPT'){
+              // سكريبت متحط عن طريق innerHTML ماينفعش يتنفذ لوحده، فبنعمله من جديد
+              let s = document.createElement('script');
+              Array.from(node.attributes).forEach(a => s.setAttribute(a.name, a.value));
+              s.text = node.textContent;
+              document.head.appendChild(s);
+            } else {
+              document.head.appendChild(node.cloneNode ? node.cloneNode(true) : node);
+            }
+          });
+        }
+      }
+    }).catch(()=>{});
+
     // عداد زيارات المتجر - يزيد مرة واحدة لكل تحميل للصفحة
     if(!visitCounted){
       visitCounted = true;
