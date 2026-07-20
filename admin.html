@@ -212,16 +212,6 @@ nav a{padding:8px 12px;font-size:14px}
     </div>
   </div>
 
-  <div id="managerGate" class="page">
-    <div class="box" style="max-width:400px;margin:40px auto">
-      <h3 style="text-align:center;margin-bottom:10px">🔒 باسورد الإدارة</h3>
-      <input id="mp" type="password" placeholder="باسورد الإدارة" autocomplete="off">
-      <button class="btn" onclick="doManagerLogin()">دخول</button>
-      <p id="mpErr" style="color:red;display:none;text-align:center">باسورد غلط</p>
-      <button class="btn gray" onclick="doLogout()">رجوع</button>
-    </div>
-  </div>
-
   <div id="forgot" class="page">
     <div class="box" style="max-width:400px;margin:40px auto">
       <h3>استرجاع كلمة السر</h3>
@@ -434,9 +424,7 @@ nav a{padding:8px 12px;font-size:14px}
       <label data-key="store_name_lbl">اسم المتجر</label><input id="stName">
       <label data-key="whatsapp_lbl">واتساب</label><input id="stWa" placeholder="2010..." inputmode="tel">
       <label data-key="site_color_lbl">لون الموقع الأساسي</label><input type="color" id="stColor" style="padding:0; height:44px; cursor:pointer">
-      <label>باسورد الإدارة (الطبقة الثانية)</label>
-      <input id="stMP" type="password" placeholder="مثال: 0000">
-      <p style="color:var(--muted);font-size:13px">لتغيير إيميل/باسورد الدخول الرئيسي: Firebase Console ← Authentication ← Users</p>
+      <p style="color:var(--muted);font-size:13px">لتغيير إيميل/باسورد الدخول: Firebase Console ← Authentication ← Users</p>
       
       <hr>
       <h4>إدارة أقسام المتجر</h4>
@@ -614,8 +602,12 @@ nav a{padding:8px 12px;font-size:14px}
 </div>
 
 <script>
-let ADMIN = JSON.parse(localStorage.adm||'{"mp":"0000"}');
-if(!ADMIN.mp) ADMIN.mp='0000';
+// Escapes text before it's inserted via innerHTML/document.write, so data
+// coming from customers (order name/phone/address) or Firestore can never
+// break out and run as HTML/JS in the admin's logged-in session.
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false}');
 
 let PROD=[];
@@ -871,7 +863,6 @@ function go(id){
 }
 
 function saveAll(){
-  localStorage.adm = JSON.stringify(ADMIN);
   localStorage.set = JSON.stringify(SET);
 }
 
@@ -904,21 +895,9 @@ async function doLogin(){
   }
 }
 
-function doManagerLogin(){
-  if(mp.value === (ADMIN.mp||'0000')){
-    document.getElementById('menu').style.display='flex';
-    localStorage.isAdminLoggedIn='true';
-    startProtectedListeners();
-    go('store');
-  } else {
-    mpErr.style.display='block';
-  }
-}
-
 function doLogout(){
   if(window._fbAuth && window._fbSignOut) window._fbSignOut(window._fbAuth).catch(()=>{});
   document.getElementById('menu').style.display='none';
-  localStorage.isAdminLoggedIn='false';
   go('login');
 }
 function logout(){ doLogout(); }
@@ -942,6 +921,51 @@ function getPrice(p, qty=1){
     price = price * (1 - p.bulk_disc/100);
   }
   return price;
+}
+
+// Re-prices an order using the REAL, current product data (PROD/SET are
+// already loaded here in the logged-in admin session) and compares it to
+// the total the customer's browser submitted. This runs entirely in the
+// admin's browser at view-time — no server/Cloud Function/Blaze plan
+// needed — so it's the free-plan equivalent of server-side validation.
+// Caveat: if a product's price legitimately changed after the order was
+// placed, this can flag an honest old order too — always check the item
+// list before assuming tampering.
+function getOrderPriceWarning(o){
+  let items = o.items || [];
+  if(!items.length) return null;
+
+  let subtotal = 0;
+  let unknownProduct = false;
+  items.forEach(item=>{
+    let p = PROD.find(x=>x.id == item.id);
+    if(!p){ unknownProduct = true; return; }
+    let qty = Number(item.q) || 0;
+    subtotal += getPrice(p, qty) * qty;
+  });
+
+  if(unknownProduct) return 'الطلب فيه صنف مش موجود في المنتجات حالياً — راجعه يدويًا قبل ما تأكده.';
+
+  let realShipping = Number(o.ship) || 0;
+  if(SET.gov && SET.gov.length){
+    let validShip = SET.gov.some(g => Number(g.v) === realShipping);
+    if(!validShip) realShipping = Math.min(...SET.gov.map(g => Number(g.v) || 0));
+  }
+
+  let submittedCoupon = Number(o.coupon) || 0;
+  let realCoupon = 0;
+  if(SET.cpOn && SET.cpCode){
+    let maxCoupon = subtotal * ((Number(SET.cpVal) || 0) / 100);
+    realCoupon = Math.min(Math.max(submittedCoupon, 0), maxCoupon);
+  }
+
+  let realTotal = Math.max(0, subtotal - realCoupon + realShipping);
+  let submittedTotal = Number(o.tot) || 0;
+
+  if(Math.abs(submittedTotal - realTotal) > 0.5){
+    return `السعر المرسل من العميل (${submittedTotal.toFixed(1)} جنيه) مختلف عن السعر الصحيح حسب المنتجات الحالية (${realTotal.toFixed(1)} جنيه) — راجع الطلب قبل التأكيد أو الشحن.`;
+  }
+  return null;
 }
 
 function filterCat(catName, btnElement) {
@@ -2090,42 +2114,46 @@ function drawO(){
   
   let html = '';
   filteredORD.forEach(o=>{
+    let priceWarning = getOrderPriceWarning(o);
     let itemsHtml = (o.items || []).map(i=>{
       let sizesText = '';
       if(i.sizes && Object.keys(i.sizes).length){
-        sizesText = Object.entries(i.sizes).map(([k,v])=>`${k}: ${v}`).join(' - ');
+        sizesText = Object.entries(i.sizes).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
         sizesText = `<div style="margin-right:15px;color:#555">المقاسات: ${sizesText}</div>`;
       }
       let colorsText = '';
       if(i.colors && Object.keys(i.colors).length){
-        colorsText = Object.entries(i.colors).map(([k,v])=>`${k}: ${v}`).join(' - ');
+        colorsText = Object.entries(i.colors).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
         colorsText = `<div style="margin-right:15px;color:#555">الوان: ${colorsText}</div>`;
       }
       let customText = '';
       if(i.custom && Object.keys(i.custom).length){
-        customText = Object.entries(i.custom).map(([k,v])=>`${k}: ${v}`).join(' - ');
+        customText = Object.entries(i.custom).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
         customText = `<div style="margin-right:15px;color:#555">${customText}</div>`;
       }
-      return `<div style="margin-bottom:10px"><b>${i.n}</b> x${i.q} ${sizesText} ${colorsText} ${customText}</div>`
+      return `<div style="margin-bottom:10px"><b>${esc(i.n)}</b> x${esc(i.q)} ${sizesText} ${colorsText} ${customText}</div>`
     }).join('');
 
+    // paymentScreenshot is a data: URL from a canvas re-encode (see checkout.html),
+    // so it should never contain quotes/markup — but esc() as defense in depth.
     let paymentHtml = o.paymentScreenshot ? `
       <div style="border-top:1px dashed #ddd;padding-top:8px;margin-top:8px">
         <b style="color:#856404">💜 دفع فودافون كاش - صورة التحويل:</b><br>
-        <img src="${o.paymentScreenshot}" style="width:120px;height:120px;object-fit:cover;border-radius:8px;margin-top:6px;cursor:pointer;border:1px solid #ddd" onclick="window.open('${o.paymentScreenshot}','_blank')">
+        <img src="${esc(o.paymentScreenshot)}" style="width:120px;height:120px;object-fit:cover;border-radius:8px;margin-top:6px;cursor:pointer;border:1px solid #ddd" onclick="window.open('${esc(o.paymentScreenshot)}','_blank')">
       </div>` : '';
 
     html += `
     <div class="order" id="order-${o.id}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <h4 style="margin:0">${i18n[LANG].order_no} #${(o.orderNum || o.id).toString().slice(-6)}</h4>
+        <h4 style="margin:0">${i18n[LANG].order_no} #${esc((o.orderNum || o.id).toString().slice(-6))}</h4>
         <span class="badge ${o.st=='new'?'new':o.st=='ship'?'ship':o.st=='ok'?'ok':'cancel'}">
           ${o.st=='new'?'جديد':o.st=='ship'?'اتشحن':o.st=='ok'?'تم التسليم':'ملغي'}
         </span>
       </div>
-      <p style="margin:6px 0;color:var(--muted)"><b>${o.date || ''}</b></p>
-      <p><b>${o.c ? o.c.n : ''}</b> - ${o.c ? o.c.p : ''}${o.c && o.c.p2 ? ` / ${o.c.p2}` : ''}</p>
-      <p>${o.c ? o.c.g : ''} - ${o.c ? o.c.a : ''}</p>
+      <p style="margin:6px 0;color:var(--muted)"><b>${esc(o.date || '')}</b></p>
+      ${priceWarning ? `<p style="background:#f8d7da;color:#842029;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0;font-weight:700">⚠️ ${esc(priceWarning)}</p>` : ''}
+      <p><b>${o.c ? esc(o.c.n) : ''}</b> - ${o.c ? esc(o.c.p) : ''}${o.c && o.c.p2 ? ` / ${esc(o.c.p2)}` : ''}</p>
+      <p>${o.c ? esc(o.c.g) : ''} - ${o.c ? esc(o.c.a) : ''}</p>
       <div style="border-top:1px dashed #ddd;padding-top:8px">${itemsHtml}</div>
       ${paymentHtml}
       <h4 style="color:var(--main)">${i18n[LANG].total_lbl}: ${(o.tot || 0).toFixed(1)} ${i18n[LANG].currency}</h4>
@@ -2192,10 +2220,14 @@ function printInvoice(id){
   let o = ORD.find(x=>x.id==id);
   if(!o) return alert('الطلب مش موجود');
 
-  let cName = o.c ? o.c.n : '-';
-  let cPhone = o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : '-';
-  let cGov = o.c ? o.c.g : '-';
-  let cAddr = o.c ? o.c.a : '-';
+  // Invoice opens in a new same-origin window via document.write, so any
+  // unescaped customer text here would run with full access to this app's
+  // session (cookies/localStorage) — always escape before interpolating.
+  let cName = esc(o.c ? o.c.n : '-');
+  let cPhone = esc(o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : '-');
+  let cGov = esc(o.c ? o.c.g : '-');
+  let cAddr = esc(o.c ? o.c.a : '-');
+  let priceWarning = getOrderPriceWarning(o);
   let shipping = Number(o.ship || 0);
   let couponDiscount = Number(o.coupon || 0);
   let bulkDiscount = Number(o.bulkDiscount || 0); 
@@ -2210,27 +2242,27 @@ function printInvoice(id){
 
     let sizesText = '-';
     if(i.sizes && Object.keys(i.sizes).length){
-      sizesText = Object.entries(i.sizes).map(([k,v])=>`${k}: ${v}`).join(' - ');
+      sizesText = Object.entries(i.sizes).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
     }
 
     let colorsText = '-';
     if(i.colors && Object.keys(i.colors).length){
-      colorsText = Object.entries(i.colors).map(([k,v])=>`${k}: ${v}`).join(' - ');
+      colorsText = Object.entries(i.colors).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
     }
 
     let customText = '-';
     if(i.custom && Object.keys(i.custom).length){
-      customText = Object.entries(i.custom).map(([k,v])=>`${k}: ${v}`).join(' - ');
+      customText = Object.entries(i.custom).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' - ');
     }
 
     return `<tr>
-      <td>${i.n}</td>
+      <td>${esc(i.n)}</td>
       <td>${sizesText}</td>
       <td>${colorsText}</td>
       <td>${customText}</td>
-      <td>${qty}</td>
-      <td>${price} ج</td>
-      <td>${itemTotal} ج</td>
+      <td>${esc(qty)}</td>
+      <td>${esc(price)} ج</td>
+      <td>${esc(itemTotal)} ج</td>
     </tr>`;
   }).join('');
 
@@ -2257,16 +2289,17 @@ function printInvoice(id){
       </style>
     </head>
     <body>
-      <h2>فاتورة مبيعات - ${SET.name}</h2>
+      <h2>فاتورة مبيعات - ${esc(SET.name)}</h2>
       <div class="info">
-        <b>رقم الطلب:</b> #${(o.orderNum || o.id).toString().slice(-6)} <br>
-        <b>التاريخ:</b> ${o.date || ''} <br>
+        <b>رقم الطلب:</b> #${esc((o.orderNum || o.id).toString().slice(-6))} <br>
+        <b>التاريخ:</b> ${esc(o.date || '')} <br>
         <b>العميل:</b> ${cName} <br>
         <b>التليفون:</b> ${cPhone} <br>
         <b>المحافظة:</b> ${cGov} <br>
         <b>العنوان:</b> ${cAddr} <br>
         <b>الحالة:</b> ${o.st=='new'?'جديد':o.st=='ok'?'تم التسليم':'ملغي'}
       </div>
+      ${priceWarning ? `<div style="background:#f8d7da;color:#842029;padding:10px;border-radius:8px;margin-bottom:15px;font-weight:bold">⚠️ ${esc(priceWarning)}</div>` : ''}
       
       <table>
         <thead>
@@ -2374,7 +2407,7 @@ async function updateStockFromDash(id){
 }
 
 function drawS(){
-  stName.value=SET.name;stWa.value=SET.wa;stColor.value=SET.theme||'#ff6600';stMP.value=ADMIN.mp||'';cpOn.checked=SET.cpOn;cpCode.value=SET.cpCode;cpVal.value=SET.cpVal;
+  stName.value=SET.name;stWa.value=SET.wa;stColor.value=SET.theme||'#ff6600';cpOn.checked=SET.cpOn;cpCode.value=SET.cpCode;cpVal.value=SET.cpVal;
   waFloat.href=`https://wa.me/${SET.wa}`;gList.innerHTML='';
   SET.gov.forEach((g,i)=>{gList.innerHTML+=`<div class="gov"><input value="${g.n}" oninput="SET.gov[${i}].n=this.value"><input type="number" value="${g.v}" oninput="SET.gov[${i}].v=+this.value"><button class="btn red" onclick="SET.gov.splice(${i},1);drawS()">X</button></div>`})
   
@@ -2430,12 +2463,9 @@ async function saveS(){
   SET.shippingPolicyText=shippingPolicyText.value;
   SET.altPhoneOn=altPhoneOn.checked;
   
-  ADMIN.mp = stMP.value || '0000';
-  localStorage.adm = JSON.stringify(ADMIN);
   applyTheme(SET.theme);saveAll();sName.innerText=SET.name;
   
   await setDoc(doc(db, "settings", "main"), SET); 
-  await setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
   await setDoc(doc(db, "settings", "advanced"), {headerCode: headerCode.value}, {merge: true});
 
   renderCategoriesDOM();
@@ -2461,10 +2491,10 @@ function printAllOrders(){
     let final = totalAfter + shipping;
     
     return `<tr>
-      <td>${(o.orderNum || o.id).toString().slice(-6)}</td>
-      <td>${o.date || ''}</td>
-      <td>${o.c ? o.c.n : ''}</td>
-      <td>${o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : ''}</td>
+      <td>${esc((o.orderNum || o.id).toString().slice(-6))}</td>
+      <td>${esc(o.date || '')}</td>
+      <td>${o.c ? esc(o.c.n) : ''}</td>
+      <td>${o.c ? esc(o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '')) : ''}</td>
       <td>${o.items ? o.items.length : 0}</td>
       <td>${bulk.toFixed(1)}</td>
       <td>${sub.toFixed(1)}</td>
@@ -2486,7 +2516,7 @@ function printAllOrders(){
       th{background:#f2f2f2}
       @media print{ button{display:none} }
     </style></head><body>
-      <h2>تقرير جميع الطلبات - ${SET.name}</h2>
+      <h2>تقرير جميع الطلبات - ${esc(SET.name)}</h2>
       <table>
         <tr>
           <th>رقم</th><th>التاريخ</th><th>العميل</th><th>التليفون</th><th>عدد الاصناف</th>
@@ -2641,19 +2671,6 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
       updateNewOrderBadge();
     });
 
-    // باسورد الإدارة
-    getDoc(doc(db, "settings", "admin_auth")).then(snap => {
-      if(snap.exists()){
-        let cloudAuth = snap.data();
-        if(cloudAuth.mp !== undefined && (ADMIN.mp||'') !== (cloudAuth.mp||'')) {
-          ADMIN.mp = cloudAuth.mp;
-          localStorage.adm = JSON.stringify(ADMIN);
-        }
-      } else {
-        setDoc(doc(db, "settings", "admin_auth"), {mp: ADMIN.mp||''});
-      }
-    });
-
     loadSuppliers();
   };
 
@@ -2677,23 +2694,15 @@ import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then((
       if(loginBtn){ loginBtn.disabled=false; loginBtn.innerText='دخول'; }
 
       if(user){
-        // مسجل دخول — هل عدى طبقة الإدارة؟
-        if(localStorage.isAdminLoggedIn==='true'){
-          document.getElementById('menu').style.display='flex';
-          startProtectedListeners();
-          if(document.getElementById('login').classList.contains('on') ||
-             document.getElementById('managerGate').classList.contains('on')){
-            go('store');
-          }
-        } else {
-          // عدى Firebase بس، لسه عايز طبقة الإدارة
-          mp.value=''; mpErr.style.display='none';
-          go('managerGate');
+        // مسجل دخول بـ Firebase Auth — كفاية، مفيش طبقة تانية
+        document.getElementById('menu').style.display='flex';
+        startProtectedListeners();
+        if(document.getElementById('login').classList.contains('on')){
+          go('store');
         }
       } else {
         // مش مسجل دخول
         document.getElementById('menu').style.display='none';
-        localStorage.isAdminLoggedIn='false';
         if(!document.getElementById('login').classList.contains('on') &&
            !document.getElementById('forgot').classList.contains('on')){
           go('login');

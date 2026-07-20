@@ -35,6 +35,14 @@ const i18n = {
 
 function toast(t){let e=document.getElementById('toast');if(!e)return;e.innerText=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)}
 
+// Escapes text before it's inserted via innerHTML, so data coming from
+// customers or from Firestore (product names/descriptions, cart text, etc.)
+// can never break out and run as HTML/JS. Always wrap untrusted text with
+// this when building innerHTML strings.
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function applyTheme(color){
   document.documentElement.style.setProperty('--main', color);
   document.documentElement.style.setProperty('--main-dark', color + 'cc');
@@ -100,7 +108,7 @@ function renderCartDrawer(){
     return `
     <div class="cart-item">
       ${previewTag}
-      <div style="flex:1"><b>${x.p.n}</b><br><span style="color:var(--muted)">${getPrice(x.p, x.q)} ${i18n[LANG].currency}</span></div>
+      <div style="flex:1"><b>${esc(x.p.n)}</b><br><span style="color:var(--muted)">${getPrice(x.p, x.q)} ${i18n[LANG].currency}</span></div>
       <div class="qty">
         <button class="btn small gray" onclick="chgQty('${x.id}',-1)">-</button>
         <b>${x.q}</b>
@@ -163,7 +171,7 @@ function renderCategoriesDOM() {
   if(storeBar) {
     storeBar.innerHTML = SET.categories.map(c => {
       let activeClass = currentFilter === c.id ? 'active' : '';
-      return `<button class="opt-btn ${activeClass}" onclick="filterCat('${c.id}', this)">${c.n}</button>`;
+      return `<button class="opt-btn ${activeClass}" onclick="filterCat('${c.id}', this)">${esc(c.n)}</button>`;
     }).join('');
   }
 }
@@ -246,7 +254,7 @@ function sendBotQuick(text){
 function renderBotMessages(){
   let box = document.getElementById('botMessages');
   if(!box) return;
-  box.innerHTML = BOT_MSGS.map(m => `<div class="bot-msg ${m.from}">${m.text}</div>`).join('');
+  box.innerHTML = BOT_MSGS.map(m => `<div class="bot-msg ${m.from}">${esc(m.text)}</div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
 
