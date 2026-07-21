@@ -393,8 +393,10 @@ function checkNewProducts(){
 // Each page can define window.onSettingsLoaded / window.onProductsLoaded
 // before calling initApp() to hook into the data lifecycle.
 function initApp(){
-  import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js").then(({ initializeApp }) => {
-  import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js").then(({ getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, onSnapshot, serverTimestamp, increment }) => {
+  Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js")
+  ]).then(([{ initializeApp }, { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, onSnapshot, serverTimestamp, increment }]) => {
     const app = initializeApp({apiKey: "AIzaSyDW1_AUSDZl5vyzH_l5SucrA4CISv2Sz8g",authDomain: "jopa-ff3d4.firebaseapp.com",projectId: "jopa-ff3d4",storageBucket: "jopa-ff3d4.firebasestorage.app",messagingSenderId: "481955111504",appId: "1:481955111504:web:6920b1440453fb2da0e755"});
     db = getFirestore(app);
     window.db = db;
@@ -465,5 +467,5 @@ function initApp(){
     window.loadProducts = loadProducts;
     loadProducts();
     // مفيش polling — بيتحدث مرة واحدة عند دخول الصفحة بس
-  })});
+  });
 }
