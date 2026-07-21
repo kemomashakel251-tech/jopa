@@ -164,6 +164,30 @@ function shareProduct(id) {
   }
 }
 
+// بتظهر مباشرة تحت فورم "إضافة منتج جديد" أول ما المنتج يتحفظ، عشان الأدمن
+// يلاقي رابط المشاركة بتاعه جاهز على طول من غير ما يدور عليه في الجدول تحت.
+function showNewProductLink(id, name){
+  let box = document.getElementById('newProductLinkBox');
+  if(!box) return;
+  let url = getProductShareUrl(id);
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div style="background:#e7f8ee;border:1px solid #b7e4c7;border-radius:12px;padding:14px;margin-top:16px">
+      <b style="color:#146c43">✅ تم إضافة "${esc(name)}" — رابط المنتج جاهز للمشاركة على السوشيال ميديا:</b>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <input readonly value="${url}" style="flex:1;min-width:220px;margin:0" onclick="this.select()">
+        <button type="button" class="btn small" style="margin:0" onclick="copyNewProductLink('${url}')">📋 نسخ الرابط</button>
+      </div>
+    </div>`;
+  if(navigator.clipboard) navigator.clipboard.writeText(url).catch(()=>{});
+}
+
+function copyNewProductLink(url){
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(() => toast('تم نسخ رابط المنتج'));
+  }
+}
+
 window.addEventListener('hashchange', checkDeepLinks);
 function checkDeepLinks() {
   let hash = window.location.hash;
