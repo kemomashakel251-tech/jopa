@@ -8,6 +8,30 @@
 function esc(s){
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// بيرجع تاريخ الطلب الحقيقي كـ Date object، من حقل createdAt (اللي فايربيز بيحطه
+// أوتوماتيك وقت إنشاء الطلب) — ده أدق من الاعتماد على حقل "date" نصي ممكن يكون
+// فاضي لطلبات قديمة اتسجلت قبل ما يتضاف الحقل ده، أو لو الاتصال بالنت قطع لحظة
+// الإرسال ومحصلش وقت العميل يتسجل صح.
+function getOrderDate(o){
+  if(o.createdAt && o.createdAt.seconds) return new Date(o.createdAt.seconds * 1000);
+  if(o.date){
+    let d = new Date(o.date);
+    if(!isNaN(d)) return d;
+  }
+  return null;
+}
+
+// بيرجع نص تاريخ جاهز للعرض للطلب — بيفضّل حقل "date" لو موجود (زي ما هو
+// عشان ميتغيرش شكل الطلبات القديمة)، ولو مش موجود بيرجع تاريخ createdAt
+// منسّق، ولو ولا ده موجود بيرجع '-'.
+function formatOrderDate(o){
+  if(o.date) return o.date;
+  let d = getOrderDate(o);
+  if(!d) return '-';
+  return d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'}) +
+    ' ' + d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+}
 let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false}');
 
 let PROD=[];
