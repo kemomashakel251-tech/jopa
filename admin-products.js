@@ -48,9 +48,8 @@ async function addP(){
   if(!TMP_MEDIA.length) return alert('برجاء رفع صورة أو فيديو واحد على الأقل للمنتج');
   
   try {
-    let productName = pn.value;
-    let newDocRef = await addDoc(collection(db, "products"), {
-      n: productName,
+    await addDoc(collection(db, "products"), {
+      n: pn.value,
       cat: document.getElementById('pCat').value,
       cost: +pcost.value || 0,
       v: +pp.value,
@@ -73,7 +72,6 @@ async function addP(){
     
     resetTags();
     await window.loadProducts();
-    showNewProductLink(newDocRef.id, productName);
     toast('تمت إضافة المنتج بنجاح');
   } catch(error) {
     console.error("Error adding product: ", error);
@@ -109,9 +107,6 @@ async function delOrder(id){
 function editP(id){
   let p = PROD.find(x=>x.id==id);
   if(!p) return;
-
-  let linkBox = document.getElementById('newProductLinkBox');
-  if(linkBox) linkBox.style.display = 'none';
 
   pn.value = p.n;
   document.getElementById('pCat').value = p.cat || 'all';

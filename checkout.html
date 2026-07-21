@@ -219,45 +219,11 @@ async function finish(){
   }
 }
 
-// لو حد دخل الرابط ده مباشرة (مثلاً من إعلان فيسبوك/انستجرام/واتساب) بلينك فيه
-// ?id=xxxx بدل ما يعدي على صفحة المنتج الأول، الدالة دي بتضيف المنتج ده للسلة
-// أوتوماتيك قبل ما نعرض صفحة الدفع، عشان الصفحة متبقاش فاضية.
-function addFromUrlIfPresent(){
-  let params = new URLSearchParams(window.location.search);
-  let id = params.get('id');
-  if(!id) return;
-  if(CART[id]) return; // موجود بالفعل في السلة، نسيبها زي ما هي
-  let p = PROD.find(x => x.id == id);
-  if(!p){ toast('المنتج مش موجود أو اتشال من المتجر'); return; }
-  if(p.stock <= 0){ toast('المنتج نفذ من المخزون'); return; }
-  let qty = Math.max(1, +params.get('qty') || 1);
-  let max = p.maxQty || 999;
-  qty = Math.min(qty, max, p.stock);
-  CART[id] = qty;
-  saveCart();
-  updateCartBadge();
-}
-
-// لما يكون في منتج واحد بس في السلة، بنحدّث رابط الصفحة في شريط العنوان
-// (من غير ما نعمل ريلود) عشان يبقى فيه ?id=xxxx — يعني تقدر تنسخ الرابط من
-// فوق من المتصفح على طول وتستخدمه كلينك مباشر للمنتج ده في الإعلانات.
-function updateUrlWithProductId(){
-  let ids = Object.keys(CART);
-  if(ids.length !== 1) return; // لو أكتر من منتج، مفيش id واحد يعبّر عن السلة
-  let id = ids[0];
-  let params = new URLSearchParams(window.location.search);
-  if(params.get('id') === id) return; // موجود بالفعل، متعملش حاجة
-  let newUrl = window.location.pathname + '?id=' + id;
-  history.replaceState(null, '', newUrl);
-}
-
 function renderCheckout(){
-  addFromUrlIfPresent();
   if(!Object.keys(CART).length){
     document.querySelector('.container .box').innerHTML = `<p style="text-align:center;color:var(--muted)">السلة فاضية</p><a href="index.html" class="btn">الرجوع للمتجر</a>`;
     return;
   }
-  updateUrlWithProductId();
 
   let noteHtml = SET.clientNote? `<div style='background:#e7f1ff;border:1px solid #b3d4fc;padding:12px;text-align:center;font-weight:600;color:#084298;margin-bottom:15px;border-radius:8px'>📢 ${SET.clientNote}</div>` : '';
 
