@@ -4,7 +4,7 @@
 // between the separate pages of the site.
 // ============================================================
 
-let SET={"name":"yourplace_مكانك","wa":"2010","theme":"#2563EB","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false};
+let SET={"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false};
 let PROD=[];
 // عرض فوري من الكاش (لو موجود) لحد ما البيانات الحية توصل من Firebase،
 // ده بيقلل زمن ظهور أول محتوى (LCP) بشكل كبير على الزيارات المتكررة
@@ -45,20 +45,12 @@ const i18n = {
 
 function toast(t){let e=document.getElementById('toast');if(!e)return;e.innerText=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)}
 
-// أي نص جاي من المستخدم (اسم منتج، وصف، اسم عميل، مقاس/لون مكتوب يدوي...) لازم
-// يتعدّى من هنا قبل ما يتحط جوه innerHTML، عشان محدش يقدر يحقن HTML/سكريبت
-// (XSS) عن طريق اسم منتج أو بيانات طلب.
+// Escapes text before it's inserted via innerHTML, so data coming from
+// customers or from Firestore (product names/descriptions, cart text, etc.)
+// can never break out and run as HTML/JS. Always wrap untrusted text with
+// this when building innerHTML strings.
 function esc(s){
-  if(s === null || s === undefined) return '';
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function safeImg(url){
-  let fallback = 'https://via.placeholder.com/200';
-  if(!url || typeof url !== 'string') return fallback;
-  let trimmed = url.trim();
-  if(!/^https?:\/\/[^\s"'<>]+$/i.test(trimmed)) return fallback;
-  return esc(trimmed);
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function applyTheme(color){
@@ -189,7 +181,7 @@ function renderCategoriesDOM() {
   if(storeBar) {
     storeBar.innerHTML = SET.categories.map(c => {
       let activeClass = currentFilter === c.id ? 'active' : '';
-      return `<button class="opt-btn ${activeClass}" onclick="filterCat('${c.id}', this)">${c.n}</button>`;
+      return `<button class="opt-btn ${activeClass}" onclick="filterCat('${c.id}', this)">${esc(c.n)}</button>`;
     }).join('');
   }
 }
@@ -208,12 +200,12 @@ function startDynamicTimer(hoursContainerId, minsContainerId, secsContainerId) {
   let configM = parseInt(SET.countDownMins) || 30;
   let configS = parseInt(SET.countDownSecs) || 0;
   let totalConfigSeconds = (configH * 3600) + (configM * 60) + configS;
-  let targetTimestamp = localStorage.getItem('yourplace_timer_target');
+  let targetTimestamp = localStorage.getItem('jopa_timer_target');
   let now = Math.floor(Date.now() / 1000);
 
   if (!targetTimestamp || parseInt(targetTimestamp) <= now) {
     targetTimestamp = now + totalConfigSeconds;
-    localStorage.setItem('yourplace_timer_target', targetTimestamp);
+    localStorage.setItem('jopa_timer_target', targetTimestamp);
   }
 
   function updateDOM() {
@@ -221,7 +213,7 @@ function startDynamicTimer(hoursContainerId, minsContainerId, secsContainerId) {
     let rem = targetTimestamp - currentNow;
     if (rem <= 0) {
       targetTimestamp = currentNow + totalConfigSeconds;
-      localStorage.setItem('yourplace_timer_target', targetTimestamp);
+      localStorage.setItem('jopa_timer_target', targetTimestamp);
       rem = totalConfigSeconds;
     }
     let h = Math.floor(rem / 3600);
@@ -272,7 +264,7 @@ function sendBotQuick(text){
 function renderBotMessages(){
   let box = document.getElementById('botMessages');
   if(!box) return;
-  box.innerHTML = BOT_MSGS.map(m => `<div class="bot-msg ${m.from}">${m.text}</div>`).join('');
+  box.innerHTML = BOT_MSGS.map(m => `<div class="bot-msg ${m.from}">${esc(m.text)}</div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
 
@@ -415,7 +407,7 @@ function initApp(){
     import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"),
     import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js")
   ]).then(([{ initializeApp }, { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, onSnapshot, serverTimestamp, increment, runTransaction }]) => {
-    const app = initializeApp({apiKey: "AIzaSyA1E6agTbU1Tmyn8I8n3ygl8C3Rz7SNRgg",authDomain: "yourplace-31bd8.firebaseapp.com",projectId: "yourplace-31bd8",storageBucket: "yourplace-31bd8.firebasestorage.app",messagingSenderId: "774952140342",appId: "1:774952140342:web:1f45cdbd0897e1884c2297"});
+    const app = initializeApp({apiKey: "AIzaSyDW1_AUSDZl5vyzH_l5SucrA4CISv2Sz8g",authDomain: "jopa-ff3d4.firebaseapp.com",projectId: "jopa-ff3d4",storageBucket: "jopa-ff3d4.firebasestorage.app",messagingSenderId: "481955111504",appId: "1:481955111504:web:6920b1440453fb2da0e755"});
     db = getFirestore(app);
     window.db = db;
     window.setDoc = setDoc; window.doc = doc; window.getDoc = getDoc; window.getDocs = getDocs;
@@ -430,7 +422,7 @@ function initApp(){
         try{ localStorage.setItem('cache_settings', JSON.stringify(SET)); }catch(e){}
         applyTheme(SET.theme);
         let sNameEl = document.getElementById('sName');
-        if(sNameEl) sNameEl.innerText = SET.name || 'yourplace_مكانك';
+        if(sNameEl) sNameEl.innerText = SET.name || 'JOPA 🔥';
         let waEl = document.getElementById('waFloat');
         if(SET.wa && waEl) waEl.href = `https://wa.me/${SET.wa}`;
         renderCategoriesDOM();

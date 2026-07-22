@@ -109,7 +109,7 @@ function previewMarketJson(){
     name: p.name || p.n || 'منتج بدون اسم',
     price: +p.price || +p.v || 0,
     stock: +p.stock ?? 0,
-    image: safeImg(p.image || p.img || (p.media && p.media[0] && p.media[0].src)),
+    image: p.image || p.img || (p.media && p.media[0] && p.media[0].src) || 'https://via.placeholder.com/200',
     description: p.description || p.d || ''
   }));
   localStorage.setItem('marketJson_' + ACTIVE_SUPPLIER_ID, raw);
@@ -121,7 +121,7 @@ function drawMarketGrid(){
   if(!MARKET_PRODUCTS.length){ box.innerHTML = '<p style="color:var(--muted)">مفيش منتجات للعرض</p>'; return; }
   box.innerHTML = MARKET_PRODUCTS.map((p,i) => `
     <div style="border:1px solid #eee;border-radius:12px;padding:10px;text-align:center">
-      <img src="${safeImg(p.image)}" style="width:100%;height:130px;object-fit:cover;border-radius:8px">
+      <img src="${p.image}" style="width:100%;height:130px;object-fit:cover;border-radius:8px">
       <b style="display:block;margin:8px 0 4px">${p.name}</b>
       <div style="color:var(--main);font-weight:700">${p.price} ${i18n[LANG].currency}</div>
       <div style="color:${p.stock>0?'var(--green)':'var(--red)'};font-size:13px">مخزون: ${p.stock}</div>
@@ -161,7 +161,6 @@ async function addToMine(idx){
       sourceId: mp.id
     };
     let ref = await addDoc(collection(db, "products"), newProduct);
-    // بدل قراءة كل المنتجات تاني من فايربيز، بنضيفه لمصفوفة PROD المحلية
     PROD.push({id: ref.id, ...newProduct});
     MARKET_PRODUCTS.splice(idx,1);
     drawMarketGrid();
@@ -222,8 +221,8 @@ async function runSupplierSync(){
     await setDoc(doc(db, "suppliers", ACTIVE_SUPPLIER_ID), {lastSyncAt: serverTimestamp()}, {merge: true});
   }catch(e){ console.error(e); }
 
-  // myProducts عبارة عن مراجع (references) لنفس عناصر PROD، يعني هي بالفعل
-  // اتحدثت محلياً جوه اللوب فوق — مفيش داعي نعمل getDocs لكل المنتجات تاني
+  // myProducts عبارة عن مراجع لنفس عناصر PROD، يعني هي بالفعل اتحدثت محلياً
+  // جوه اللوب فوق — مفيش داعي نعمل getDocs لكل المنتجات تاني
   if(document.getElementById('products').classList.contains('on')) drawP();
   if(document.getElementById('dashboard').classList.contains('on')) drawDashboard();
   await loadSuppliers();

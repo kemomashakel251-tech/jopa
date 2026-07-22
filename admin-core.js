@@ -1,10 +1,38 @@
-// admin-core.js — shared state (SET/PROD/ORD/CART...), i18n strings, esc()/
-// getOrderPriceWarning() security helpers, the store-assistant chatbot,
-// language/theme helpers, page navigation (go), Firebase-Auth login/logout,
-// price helper, deep-link/category helpers. Loaded first — everything else
-// depends on the globals declared here.
+// admin-core.js — state, i18n, language toggle, toast, chat-bot widget,
+// nav (go()), and login/logout. Loaded first: everything else depends on
+// the globals and helpers declared here.
 
-let SET=JSON.parse(localStorage.set||'{"name":"yourplace_مكانك","wa":"2010","theme":"#2563EB","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false}');
+// Escapes text before it's inserted via innerHTML/document.write, so data
+// coming from customers (order name/phone/address) or Firestore can never
+// break out and run as HTML/JS in the admin's logged-in session.
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// بيرجع تاريخ الطلب الحقيقي كـ Date object، من حقل createdAt (اللي فايربيز بيحطه
+// أوتوماتيك وقت إنشاء الطلب) — ده أدق من الاعتماد على حقل "date" نصي ممكن يكون
+// فاضي لطلبات قديمة اتسجلت قبل ما يتضاف الحقل ده، أو لو الاتصال بالنت قطع لحظة
+// الإرسال ومحصلش وقت العميل يتسجل صح.
+function getOrderDate(o){
+  if(o.createdAt && o.createdAt.seconds) return new Date(o.createdAt.seconds * 1000);
+  if(o.date){
+    let d = new Date(o.date);
+    if(!isNaN(d)) return d;
+  }
+  return null;
+}
+
+// بيرجع نص تاريخ جاهز للعرض للطلب — بيفضّل حقل "date" لو موجود (زي ما هو
+// عشان ميتغيرش شكل الطلبات القديمة)، ولو مش موجود بيرجع تاريخ createdAt
+// منسّق، ولو ولا ده موجود بيرجع '-'.
+function formatOrderDate(o){
+  if(o.date) return o.date;
+  let d = getOrderDate(o);
+  if(!d) return '-';
+  return d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'}) +
+    ' ' + d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+}
+let SET=JSON.parse(localStorage.set||'{"name":"JOPA Store","wa":"2010","theme":"#ff6600","gov":[{"n":"العاصمة","v":50}],"categories":[{"id":"all","n":"الكل"},{"id":"electronics","n":"إلكترونيات"},{"id":"fashion","n":"أزياء"},{"id":"cosmetics","n":"تجميل"}],"cpOn":false,"cpCode":"SALE50","cpVal":10,"skipCart":false,"clientNote":"","fakeCounterOn":true,"fakeCounterNum":15,"countDownOn":true,"countDownHours":2,"countDownMins":30,"countDownSecs":0,"countDownText":"ينتهي العرض الخاص خلال","fbPixelId":"","tiktokPixelId":"","vodafoneOn":false,"vodafoneNumber":"","shippingPolicyOn":false,"shippingPolicyText":"","altPhoneOn":false}');
 
 let PROD=[];
 let ORD=[];
@@ -83,67 +111,6 @@ function toggleLang(){
 }
 
 function toast(t){let e=document.getElementById('toast');e.innerText=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)}
-
-// أي بيانات جاية من العميل (اسم، تليفون، عنوان، مقاس/لون مكتوب...) أو حتى
-// اسم منتج، لازم تتعدّى من هنا قبل ما تتحط جوه innerHTML أو داخل صفحة الفاتورة
-// (اللي بتتفتح بنفس الأصل عن طريق document.write)، عشان محدش يقدر يحقن
-// HTML/سكريبت (XSS) عن طريق بيانات طلب.
-function esc(s){
-  if(s === null || s === undefined) return '';
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function safeImg(url){
-  let fallback = 'https://via.placeholder.com/200';
-  if(!url || typeof url !== 'string') return fallback;
-  let trimmed = url.trim();
-  if(!/^https?:\/\/[^\s"'<>]+$/i.test(trimmed)) return fallback;
-  return esc(trimmed);
-}
-
-// بيقارن إجمالي الطلب (o.tot) اللي بعته العميل بالسعر الحقيقي المحسوب من
-// بيانات المنتجات الحالية في PROD، عشان يكشف أي تلاعب في السعر قبل ما
-// الأدمن يأكد/يشحن الطلب (الـ Firestore rules مش بتتحقق من tot بالكامل).
-function getOrderPriceWarning(o){
-  if(!o || !o.items || !o.items.length) return null;
-  let realSubtotal = 0;
-  for(let i of o.items){
-    let p = PROD.find(x => x.id == i.id);
-    let unitPrice = p ? getPrice(p, i.q || 1) : Number(i.v || 0);
-    realSubtotal += unitPrice * (i.q || 1);
-  }
-  let shipping = Number(o.ship || 0);
-  let couponDiscount = Number(o.coupon || 0);
-  let bulkDiscount = Number(o.bulkDiscount || 0);
-  let expectedTotal = realSubtotal - couponDiscount - bulkDiscount + shipping;
-  let actualTotal = Number(o.tot || 0);
-  if(Math.abs(expectedTotal - actualTotal) > 1){
-    return `الإجمالي المرسل (${actualTotal.toFixed(1)}) مختلف عن السعر الحقيقي المحسوب (${expectedTotal.toFixed(1)}) — راجع الطلب قبل التأكيد`;
-  }
-  return null;
-}
-
-// بيرجع تاريخ الطلب الحقيقي كـ Date object من حقل createdAt (اللي فايربيز
-// بيحطه أوتوماتيك وقت إنشاء الطلب) — ده أدق من الاعتماد بس على حقل "date"
-// النصي، اللي ممكن يكون فاضي لطلبات قديمة أو لو الاتصال قطع لحظة الإرسال.
-function getOrderDate(o){
-  if(o.createdAt && o.createdAt.seconds) return new Date(o.createdAt.seconds * 1000);
-  if(o.date){
-    let d = new Date(o.date);
-    if(!isNaN(d)) return d;
-  }
-  return null;
-}
-
-// بيرجع نص تاريخ جاهز للعرض — بيفضّل حقل "date" لو موجود، ولو مش موجود
-// بيرجع تاريخ createdAt منسّق، ولو ولا ده موجود بيرجع '-'.
-function formatOrderDate(o){
-  if(o.date) return o.date;
-  let d = getOrderDate(o);
-  if(!d) return '-';
-  return d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'}) +
-    ' ' + d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
-}
 
 let BOT_MSGS = JSON.parse(localStorage.botChat || '[]');
 const BOT_QUICK_REPLIES = [
@@ -370,199 +337,5 @@ async function doForgotPassword(){
   } catch(e){
     msg.style.color='red'; msg.innerText='إيميل غير مسجل أو خطأ في الاتصال'; msg.style.display='block';
   }
-}
-
-function getPrice(p, qty=1){
-  let price = p.disc && p.disc < p.v? p.disc : p.v;
-  if(p.bulk_on && qty >= p.bulk_qty){
-    price = price * (1 - p.bulk_disc/100);
-  }
-  return price;
-}
-
-function filterCat(catName, btnElement) {
-  currentFilter = catName;
-  btnElement.parentElement.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
-  btnElement.classList.add('active');
-  drawStore();
-}
-
-function startDynamicTimer(hoursContainerId, minsContainerId, secsContainerId) {
-  if(timerIntervalGlobal) clearInterval(timerIntervalGlobal);
-
-  let configH = parseInt(SET.countDownHours) || 2;
-  let configM = parseInt(SET.countDownMins) || 30;
-  let configS = parseInt(SET.countDownSecs) || 0;
-  let totalConfigSeconds = (configH * 3600) + (configM * 60) + configS;
-
-  let targetTimestamp = localStorage.getItem('yourplace_timer_target');
-  let now = Math.floor(Date.now() / 1000);
-
-  if (!targetTimestamp || parseInt(targetTimestamp) <= now) {
-    targetTimestamp = now + totalConfigSeconds;
-    localStorage.setItem('yourplace_timer_target', targetTimestamp);
-  }
-
-  function updateDOM() {
-    let currentNow = Math.floor(Date.now() / 1000);
-    let rem = targetTimestamp - currentNow;
-
-    if (rem <= 0) {
-      targetTimestamp = currentNow + totalConfigSeconds;
-      localStorage.setItem('yourplace_timer_target', targetTimestamp);
-      rem = totalConfigSeconds;
-    }
-
-    let h = Math.floor(rem / 3600);
-    let m = Math.floor((rem % 3600) / 60);
-    let s = rem % 60;
-
-    let hEl = document.getElementById(hoursContainerId);
-    let mEl = document.getElementById(minsContainerId);
-    let sEl = document.getElementById(secsContainerId);
-
-    if(hEl) hEl.innerText = String(h).padStart(2, '0');
-    if(mEl) mEl.innerText = String(m).padStart(2, '0');
-    if(sEl) sEl.innerText = String(s).padStart(2, '0');
-  }
-
-  updateDOM();
-  timerIntervalGlobal = setInterval(updateDOM, 1000);
-}
-
-function openLandingPage(id) {
-  let p = PROD.find(x => x.id == id);
-  if(!p) return;
-  
-  window.location.hash = `lp?id=${id}`;
-  document.getElementById('lpShareUrl').innerText = window.location.href;
-
-  document.getElementById('landingTitle').innerText = p.n;
-  document.getElementById('landingDesc').innerText = p.d || 'لا يوجد وصف تفصيلي متوفر حالياً لهذا المنتج.';
-  
-  let priceHtml = p.disc && p.disc < p.v
-    ? `<span style="text-decoration:line-through;color:var(--muted);font-size:18px; margin-left:10px;">${p.v} ج</span> <span style="color:var(--main); font-size:26px; font-weight:bold;">${p.disc} جنيه فقط!</span>`
-    : `<span style="color:var(--main); font-size:26px; font-weight:bold;">${p.v} جنيه</span>`;
-  document.getElementById('landingPrice').innerHTML = priceHtml;
-  
-  let firstMedia = p.media && p.media[0] ? p.media[0] : {type:'image', src:'https://via.placeholder.com/400'};
-  document.getElementById('landingMedia').innerHTML = firstMedia.type === 'video'
-    ? `<video src="${firstMedia.src}" controls autoplay muted style="width:100%; height:100%; object-fit:contain;"></video>`
-    : `<img src="${firstMedia.src}" style="width:100%; height:100%; object-fit:contain;">`;
-    
-  let buyBtn = document.getElementById('landingBuyBtn');
-  buyBtn.setAttribute('onclick', `addC('${p.id}');`);
-  
-  let timerWrap = document.getElementById('lpTimerWrapper');
-  if(SET.countDownOn) {
-     timerWrap.style.display = 'block';
-     document.getElementById('lpTimerText').innerText = SET.countDownText;
-     startDynamicTimer('lpHours', 'lpMins', 'lpSecs');
-  } else {
-     timerWrap.style.display = 'none';
-  }
-
-  go('landingPage');
-}
-
-function copyLpUrl() {
-  let urlText = document.getElementById('lpShareUrl').innerText;
-  navigator.clipboard.writeText(urlText).then(() => {
-     toast('تم نسخ رابط صفحة الهبوط بنجاح!');
-  });
-}
-
-// رابط مشاركة للمنتج على صفحات التواصل الاجتماعي (يفتح صفحة الهبوط للمنتج في ملف المتجر الخاص بالعميل)
-function getProductShareUrl(id) {
-  let base = window.location.href.split('#')[0].replace(/admin\.html$/i, '');
-  return `${base}product.html?id=${id}`;
-}
-
-function shareProduct(id) {
-  let url = getProductShareUrl(id);
-  if(navigator.clipboard){
-    navigator.clipboard.writeText(url).then(() => toast('تم نسخ رابط المنتج - جاهز للنشر على السوشيال ميديا'));
-  }
-  if(navigator.share){
-    let p = PROD.find(x=>x.id==id);
-    navigator.share({title: p ? p.n : SET.name, url}).catch(()=>{});
-  }
-}
-
-window.addEventListener('hashchange', checkDeepLinks);
-function checkDeepLinks() {
-  let hash = window.location.hash;
-  if(hash.startsWith('#lp?id=')) {
-     let id = hash.split('=')[1];
-     setTimeout(() => {
-        openLandingPage(id);
-     }, 1200);
-  }
-}
-
-function renderCategoriesDOM() {
-  if(!SET.categories) SET.categories = [{"id":"all","n":"الكل"}];
-  
-  let storeBar = document.getElementById('storeCatBar');
-  if(storeBar) {
-    storeBar.innerHTML = SET.categories.map(c => {
-      let activeClass = currentFilter === c.id ? 'active' : '';
-      return `<button class="opt-btn ${activeClass}" onclick="filterCat('${c.id}', this)">${c.n}</button>`;
-    }).join('');
-  }
-
-  let pCatSelect = document.getElementById('pCat');
-  if(pCatSelect) {
-    pCatSelect.innerHTML = SET.categories.filter(c => c.id !== 'all').map(c => {
-      return `<option value="${c.id}">${c.n}</option>`;
-    }).join('') + `<option value="all">عام</option>`;
-  }
-}
-
-async function addCategory() {
-  let nameIn = document.getElementById('newCatName');
-  let idIn = document.getElementById('newCatId');
-  let name = nameIn.value.trim();
-  let id = idIn.value.trim().toLowerCase();
-
-  if(!name || !id) return toast('من فضلك املأ حقول القسم الجديد');
-  if(id === 'all') return toast('لا يمكن استخدام المعرف all');
-  if(SET.categories.some(c => c.id === id)) return toast('هذا المعرف موجود بالفعل');
-
-  SET.categories.push({id: id, n: name});
-  nameIn.value = ''; idIn.value = '';
-  
-  renderCategoriesDOM();
-  drawCategorySettingsList();
-  saveAll();
-  
-  if(db) await setDoc(doc(db, "settings", "main"), SET);
-  toast('تم إضافة القسم بنجاح');
-}
-
-async function deleteCategory(id) {
-  if(id === 'all') return toast('لا يمكن حذف القسم الافتراضي العام');
-  if(confirm('هل أنت متأكد من حذف هذا القسم؟ لن يتم حذف المنتجات التابعة له بل ستتحول لعام.')){
-    SET.categories = SET.categories.filter(c => c.id !== id);
-    if(currentFilter === id) currentFilter = 'all';
-    
-    renderCategoriesDOM();
-    drawCategorySettingsList();
-    saveAll();
-    
-    if(db) await setDoc(doc(db, "settings", "main"), SET);
-    toast('تم حذف القسم');
-  }
-}
-
-function drawCategorySettingsList() {
-  let container = document.getElementById('categoriesManagementList');
-  if(!container) return;
-  container.innerHTML = SET.categories.map(c => `
-    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8f9fa; padding:8px 12px; margin:4px 0; border-radius:8px;">
-      <span><b>${c.n}</b> (${c.id})</span>
-      ${c.id !== 'all' ? `<button class="btn small red" style="margin:0" onclick="deleteCategory('${c.id}')">حذف</button>` : '<small style="color:#999">أساسي</small>'}
-    </div>
-  `).join('');
 }
 
