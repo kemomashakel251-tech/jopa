@@ -47,7 +47,6 @@ function drawO(){
   
   let html = '';
   filteredORD.forEach(o=>{
-    let priceWarning = getOrderPriceWarning(o);
     let itemsHtml = (o.items || []).map(i=>{
       let sizesText = '';
       if(i.sizes && Object.keys(i.sizes).length){
@@ -84,7 +83,6 @@ function drawO(){
         </span>
       </div>
       <p style="margin:6px 0;color:var(--muted)"><b>${esc(formatOrderDate(o))}</b></p>
-      ${priceWarning ? `<p style="background:#f8d7da;color:#842029;padding:8px 10px;border-radius:8px;font-size:13px;margin:6px 0;font-weight:700">⚠️ ${esc(priceWarning)}</p>` : ''}
       <p><b>${o.c ? esc(o.c.n) : ''}</b> - ${o.c ? esc(o.c.p) : ''}${o.c && o.c.p2 ? ` / ${esc(o.c.p2)}` : ''}</p>
       <p>${o.c ? esc(o.c.g) : ''} - ${o.c ? esc(o.c.a) : ''}</p>
       <div style="border-top:1px dashed #ddd;padding-top:8px">${itemsHtml}</div>
@@ -130,21 +128,38 @@ async function setSt(id,st){
 
 async function returnStockForOrder(o){
   for(let item of (o.items || [])){
-    let p = PROD.find(x => x.id == item.id);
-    if(!p) continue;
-    p.stock = (p.stock || 0) + (item.q || 0);
-    if(item.colors){
-      p.stockByColor = p.stockByColor || {};
-      for(let c in item.colors){ p.stockByColor[c] = (p.stockByColor[c] || 0) + (item.colors[c] || 0); }
-    }
-    if(item.sizes){
-      p.stockBySize = p.stockBySize || {};
-      for(let s in item.sizes){ p.stockBySize[s] = (p.stockBySize[s] || 0) + (item.sizes[s] || 0); }
-    }
-    if(item.custom && p.customVariants){
-      for(let cv of p.customVariants){ if(item.custom[cv.name]) cv.stock = (cv.stock || 0) + item.custom[cv.name]; }
-    }
-    try { await setDoc(doc(db, "products", item.id), p); } catch(e){ console.error(e); }
+    // بنرجّع المخزون جوه معاملة (transaction) ذرّية: بتقرا آخر نسخة من المنتج
+    // في قاعدة البيانات وقت التنفيذ نفسه وتزود عليها، فمحدش يمسح تعديل حصل
+    // في نفس اللحظة على نفس المنتج (بيع أو إلغاء تاني) — ده بيشمل المخزون
+    // الكلي والألوان والمقاسات والميزة الإضافية المخصصة كلهم مع بعض.
+    try {
+      await runTransaction(db, async (tx) => {
+        let ref = doc(db, "products", item.id);
+        let snap = await tx.get(ref);
+        if(!snap.exists()) return;
+        let data = snap.data();
+        let update = { stock: (data.stock || 0) + (item.q || 0) };
+
+        if(item.colors){
+          let newStockByColor = {...(data.stockByColor || {})};
+          for(let c in item.colors){ if(item.colors[c]) newStockByColor[c] = (newStockByColor[c] || 0) + item.colors[c]; }
+          update.stockByColor = newStockByColor;
+        }
+        if(item.sizes){
+          let newStockBySize = {...(data.stockBySize || {})};
+          for(let s in item.sizes){ if(item.sizes[s]) newStockBySize[s] = (newStockBySize[s] || 0) + item.sizes[s]; }
+          update.stockBySize = newStockBySize;
+        }
+        if(item.custom && data.customVariants){
+          update.customVariants = data.customVariants.map(cv => {
+            if(item.custom[cv.name]) return {...cv, stock: (cv.stock || 0) + item.custom[cv.name]};
+            return cv;
+          });
+        }
+
+        tx.set(ref, update, {merge: true});
+      });
+    } catch(e){ console.error(e); }
   }
   if(window.loadProducts) await window.loadProducts();
 }
@@ -160,7 +175,6 @@ function printInvoice(id){
   let cPhone = esc(o.c ? o.c.p + (o.c.p2 ? ` / ${o.c.p2}` : '') : '-');
   let cGov = esc(o.c ? o.c.g : '-');
   let cAddr = esc(o.c ? o.c.a : '-');
-  let priceWarning = getOrderPriceWarning(o);
   let shipping = Number(o.ship || 0);
   let couponDiscount = Number(o.coupon || 0);
   let bulkDiscount = Number(o.bulkDiscount || 0); 
@@ -199,7 +213,7 @@ function printInvoice(id){
     </tr>`;
   }).join('');
 
-  let totalAfterDiscounts = subtotal - couponDiscount; 
+  let totalAfterDiscounts = subtotal - couponDiscount - bulkDiscount; 
   let finalTotal = totalAfterDiscounts + shipping;
 
   let w = window.open('', '_blank', 'width=900,height=700');
@@ -232,7 +246,6 @@ function printInvoice(id){
         <b>العنوان:</b> ${cAddr} <br>
         <b>الحالة:</b> ${o.st=='new'?'جديد':o.st=='ok'?'تم التسليم':'ملغي'}
       </div>
-      ${priceWarning ? `<div style="background:#f8d7da;color:#842029;padding:10px;border-radius:8px;margin-bottom:15px;font-weight:bold">⚠️ ${esc(priceWarning)}</div>` : ''}
       
       <table>
         <thead>
